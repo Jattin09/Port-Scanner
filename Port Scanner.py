@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 def parse_arguments():
 
     parser = argparse.ArgumentParser(
-        description="Advanced Multithreaded TCP Port Scanner"
+        description="Multithreaded TCP Port Scanner"
     )
 
     parser.add_argument(
@@ -24,25 +24,29 @@ def parse_arguments():
     parser.add_argument(
         "--start-port",
         type=int,
-        default=1
+        default=1,
+        help="Starting port (default: 1)"
     )
 
     parser.add_argument(
         "--end-port",
         type=int,
-        default=1024
+        default=1024,
+        help="Ending port (default: 1024)"
     )
 
     parser.add_argument(
         "--threads",
         type=int,
-        default=100
+        default=100,
+        help="Number of concurrent threads (default: 100)"
     )
 
     parser.add_argument(
         "--timeout",
         type=float,
-        default=0.5
+        default=0.5,
+        help="Connection timeout in seconds (default: 0.5)"
     )
 
     return parser.parse_args()
@@ -63,18 +67,21 @@ def scan_port(target, port, timeout):
 
             sock.settimeout(timeout)
 
-            result = sock.connect_ex(
-                (target, port)
-            )
+            result = sock.connect_ex((target, port))
 
             if result == 0:
+
+                # Identify the service safely
+                try:
+                    service = socket.getservbyport(port, "tcp")
+
+                except OSError:
+                    service = "unknown"
 
                 return {
                     "port": port,
                     "state": "open",
-                    "service": socket.getservbyport(
-                        port, "tcp"
-                    ) if port <= 65535 else "unknown"
+                    "service": service
                 }
 
     except OSError:
@@ -87,11 +94,10 @@ def scan_port(target, port, timeout):
 # MULTITHREADED SCANNER
 # ==========================================
 
-def run_scanner(target, start_port, end_port,
-                threads, timeout):
+def run_scanner(target, start_port, end_port, threads, timeout):
 
-    print("\nStarting Advanced TCP Scanner")
-    print("--------------------------------")
+    print("\nStarting Multithreaded TCP Scanner")
+    print("----------------------------------")
 
     print(f"Target: {target}")
     print(f"Port range: {start_port}-{end_port}")
@@ -107,7 +113,6 @@ def run_scanner(target, start_port, end_port,
     ) as executor:
 
         futures = {
-
             executor.submit(
                 scan_port,
                 target,
@@ -115,10 +120,7 @@ def run_scanner(target, start_port, end_port,
                 timeout
             ): port
 
-            for port in range(
-                start_port,
-                end_port + 1
-            )
+            for port in range(start_port, end_port + 1)
         }
 
         for future in as_completed(futures):
@@ -144,36 +146,39 @@ def run_scanner(target, start_port, end_port,
 
 
 # ==========================================
-# MAIN
+# MAIN FUNCTION
 # ==========================================
 
 def main():
 
     args = parse_arguments()
 
-    if not (
-        1 <= args.start_port
-        <= args.end_port
-        <= 65535
-    ):
-        raise SystemExit("Invalid port range")
+    # Validate input
+    if not (1 <= args.start_port <= args.end_port <= 65535):
+        print("Error: Invalid port range.")
+        return
 
-    if not 1 <= args.threads <= 200:
-        raise SystemExit("Threads must be between 1 and 200")
+    if args.threads < 1:
+        print("Error: Threads must be at least 1.")
+        return
 
     if args.timeout <= 0:
-        raise SystemExit("Timeout must be positive")
+        print("Error: Timeout must be greater than zero.")
+        return
 
+    # Resolve hostname to IP
     try:
 
-        target_ip = socket.gethostbyname(
-            args.target
-        )
+        target_ip = socket.gethostbyname(args.target)
+
+        print(f"\nResolved target: {args.target} -> {target_ip}")
 
     except socket.gaierror:
 
-        raise SystemExit("Unable to resolve target")
+        print("Error: Unable to resolve target hostname.")
+        return
 
+    # Run scanner
     run_scanner(
         target_ip,
         args.start_port,
@@ -183,5 +188,10 @@ def main():
     )
 
 
+# ==========================================
+# PROGRAM ENTRY POINT
+# ==========================================
+
 if __name__ == "__main__":
+
     main()
